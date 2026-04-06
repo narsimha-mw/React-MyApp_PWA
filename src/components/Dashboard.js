@@ -394,8 +394,8 @@ export default function Dashboard({ userEmail, onLogout }) {
               <h2>Delete Product</h2>
               <button className="modal-close" onClick={() => setDeleteConfirm(null)}>&#x2715;</button>
             </div>
-            <p className="delete-msg">Are you sure you want to delete <strong>{products.find(p => p.id === deleteConfirm)?.name}</strong>? This cannot be undone.</p>
-            <div className="modal-actions">
+            <p className="delete-msg">Are you sure you want to delete <strong>{products.find(p => p.id === deleteConfirm)?.name}</strong>?</p>
+            <div className="modal-actions modal-actions-center">
               <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
               <button className="btn-danger" onClick={() => handleDelete(deleteConfirm)}>Delete</button>
             </div>
