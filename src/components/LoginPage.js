@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './LoginPage.css';
+import Dashboard from './Dashboard';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -49,22 +50,13 @@ const LoginPage = () => {
 
   if (loginSuccess) {
     return (
-      <div className="login-container">
-        <div className="login-card success-card">
-          <div className="success-icon">&#10003;</div>
-          <h2>Welcome back!</h2>
-          <p>You have successfully logged in.</p>
-          <button
-            className="btn-primary"
-            onClick={() => {
-              setLoginSuccess(false);
-              setFormData({ email: '', password: '' });
-            }}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
+      <Dashboard
+        userEmail={formData.email}
+        onLogout={() => {
+          setLoginSuccess(false);
+          setFormData({ email: '', password: '' });
+        }}
+      />
     );
   }
 
