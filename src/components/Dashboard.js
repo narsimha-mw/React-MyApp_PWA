@@ -159,12 +159,10 @@ export default function Dashboard({ userEmail, onLogout }) {
 
   // ---------- Download Bulk Template ----------
   const downloadBulkTemplate = () => {
-    const sample = [
-      { name: 'Sample Product 1', quantity: 100, stock: 50, price: 299.99, description: 'Short description of product 1' },
-      { name: 'Sample Product 2', quantity: 200, stock: 120, price: 149.49, description: 'Short description of product 2' },
-      { name: 'Sample Product 3', quantity: 50,  stock: 30,  price: 499.00, description: 'Short description of product 3' },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sample);
+    const headers = [{ name: '', quantity: '', stock: '', price: '', description: '' }];
+    const ws = XLSX.utils.json_to_sheet(headers);
+    // Remove the single empty data row — keep only the header row
+    ws['!ref'] = 'A1:E1';
     ws['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 40 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Products');
