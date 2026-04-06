@@ -3,8 +3,8 @@ import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import './Dashboard.css';
 import {
-  PRODUCT_VISUALS, INITIAL_PRODUCTS, SAMPLE_ORDERS,
-  SAMPLE_INVOICES, SAMPLE_PAYMENTS, TABS, EMPTY_FORM,
+  INITIAL_PRODUCTS, SAMPLE_ORDERS, SAMPLE_INVOICES,
+  SAMPLE_PAYMENTS, PAYMENT_OPTIONS, TABS, EMPTY_FORM,
 } from './data';
 
 const CartIcon = () => (
@@ -18,12 +18,25 @@ const CartIcon = () => (
 export default function Dashboard({ userEmail, onLogout }) {
   const [activeTab, setActiveTab] = useState('Profile');
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
+  const [orders, setOrders] = useState(SAMPLE_ORDERS);
+  const [invoices, setInvoices] = useState(SAMPLE_INVOICES);
+  const [payments, setPayments] = useState(SAMPLE_PAYMENTS);
+
+  // Product modal
   const [modalState, setModalState] = useState({ open: false, mode: null, product: null });
   const [form, setForm] = useState(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState({});
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  // Cart
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
+
+  // Payment modal
+  const [paymentModal, setPaymentModal] = useState({ open: false, order: null, method: '' });
+  const [paySuccess, setPaySuccess] = useState(false);
+
+  // Bulk upload
   const [bulkError, setBulkError] = useState('');
   const fileInputRef = useRef(null);
 
@@ -36,17 +49,75 @@ export default function Dashboard({ userEmail, onLogout }) {
     });
   };
   const removeFromCart = (id) => setCart(prev => prev.filter(c => c.id !== id));
-  const cartTotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const cartCount = cart.reduce((sum, c) => sum + c.qty, 0);
+  const cartTotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
+  const cartCount = cart.reduce((s, c) => s + c.qty, 0);
+
+  // ---------- Place Order ----------
+  const placeOrder = () => {
+    if (cart.length === 0) return;
+    const today = new Date().toISOString().split('T')[0];
+    const newOrder = {
+      id: `ORD-${String(orders.length + 1).padStart(3, '0')}`,
+      date: today,
+      items: cartCount,
+      total: parseFloat(cartTotal.toFixed(2)),
+      status: 'Pending Payment',
+      cart: [...cart],
+    };
+    setOrders(prev => [...prev, newOrder]);
+    setCart([]);
+    setCartOpen(false);
+    setActiveTab('Orders');
+  };
+
+  // ---------- Payment ----------
+  const openPayment = (order) => setPaymentModal({ open: true, order, method: '' });
+
+  const handlePayment = () => {
+    if (!paymentModal.method) return;
+    const today = new Date().toISOString().split('T')[0];
+    const order = paymentModal.order;
+
+    setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Delivered' } : o));
+
+    const newInvoice = {
+      id: `INV-2026-${String(invoices.length + 1).padStart(3, '0')}`,
+      date: today,
+      amount: order.total,
+      status: 'Paid',
+      orderId: order.id,
+    };
+    setInvoices(prev => [...prev, newInvoice]);
+
+    const methodLabel = PAYMENT_OPTIONS.find(p => p.id === paymentModal.method)?.label || paymentModal.method;
+    const newPayment = {
+      id: `PAY-${String(payments.length + 1).padStart(3, '0')}`,
+      date: today,
+      method: methodLabel,
+      amount: order.total,
+      status: 'Success',
+    };
+    setPayments(prev => [...prev, newPayment]);
+
+    setPaySuccess(true);
+  };
+
+  const closePaymentModal = () => {
+    if (paySuccess) {
+      setActiveTab('Invoices');
+    }
+    setPaymentModal({ open: false, order: null, method: '' });
+    setPaySuccess(false);
+  };
 
   // ---------- Product CRUD ----------
   const openAdd = () => { setForm(EMPTY_FORM); setFormErrors({}); setModalState({ open: true, mode: 'add', product: null }); };
-  const openEdit = (product) => {
-    setForm({ ...product, quantity: String(product.quantity), stock: String(product.stock), price: String(product.price) });
+  const openEdit = (p) => {
+    setForm({ ...p, quantity: String(p.quantity), stock: String(p.stock), price: String(p.price), image: p.image || '' });
     setFormErrors({});
-    setModalState({ open: true, mode: 'edit', product });
+    setModalState({ open: true, mode: 'edit', product: p });
   };
-  const openView = (product) => setModalState({ open: true, mode: 'view', product });
+  const openView = (p) => setModalState({ open: true, mode: 'view', product: p });
   const closeModal = () => setModalState({ open: false, mode: null, product: null });
 
   const validateForm = () => {
@@ -62,16 +133,18 @@ export default function Dashboard({ userEmail, onLogout }) {
   const handleSave = () => {
     const errors = validateForm();
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
+    const idx = products.length;
     if (modalState.mode === 'add') {
       setProducts(prev => [...prev, {
         id: Date.now(), name: form.name.trim(), quantity: Number(form.quantity),
-        stock: Number(form.stock), price: parseFloat(form.price), description: form.description.trim(),
+        stock: Number(form.stock), price: parseFloat(form.price),
+        description: form.description.trim(),
+        image: form.image.trim() || `https://picsum.photos/seed/prod${idx}/400/300`,
       }]);
     } else {
-      setProducts(prev => prev.map(p =>
-        p.id === modalState.product.id
-          ? { ...p, name: form.name.trim(), quantity: Number(form.quantity), stock: Number(form.stock), price: parseFloat(form.price), description: form.description.trim() }
-          : p
+      setProducts(prev => prev.map(p => p.id === modalState.product.id
+        ? { ...p, name: form.name.trim(), quantity: Number(form.quantity), stock: Number(form.stock), price: parseFloat(form.price), description: form.description.trim(), image: form.image.trim() || p.image }
+        : p
       ));
     }
     closeModal();
@@ -95,31 +168,31 @@ export default function Dashboard({ userEmail, onLogout }) {
         const wb = XLSX.read(evt.target.result, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        const required = ['name', 'quantity', 'stock', 'price', 'description'];
         if (rows.length === 0) { setBulkError('File is empty.'); return; }
         const keys = Object.keys(rows[0]).map(k => k.toLowerCase());
-        const missing = required.filter(r => !keys.includes(r));
+        const missing = ['name', 'quantity', 'stock', 'price', 'description'].filter(r => !keys.includes(r));
         if (missing.length > 0) { setBulkError(`Missing columns: ${missing.join(', ')}`); return; }
-        const newProducts = rows.map(row => ({
-          id: Date.now() + Math.random(),
+        const newProds = rows.map((row, i) => ({
+          id: Date.now() + i,
           name: String(row.name || row.Name).trim(),
           quantity: Number(row.quantity || row.Quantity) || 0,
           stock: Number(row.stock || row.Stock) || 0,
           price: parseFloat(row.price || row.Price) || 0,
           description: String(row.description || row.Description).trim(),
+          image: `https://picsum.photos/seed/bulk${Date.now() + i}/400/300`,
         })).filter(p => p.name);
-        setProducts(prev => [...prev, ...newProducts]);
+        setProducts(prev => [...prev, ...newProds]);
       } catch {
-        setBulkError('Failed to parse file. Use CSV or Excel with columns: name, quantity, stock, price, description');
+        setBulkError('Failed to parse file. Use CSV/Excel with columns: name, quantity, stock, price, description');
       }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
   };
 
-  // ---------- Download Orders Excel ----------
+  // ---------- Downloads ----------
   const downloadOrdersExcel = () => {
-    const data = SAMPLE_ORDERS.map(o => ({
+    const data = orders.map(o => ({
       'Order ID': o.id, 'Date': o.date, 'Items': o.items,
       'Total (₹)': o.total.toFixed(2), 'Status': o.status,
     }));
@@ -129,50 +202,39 @@ export default function Dashboard({ userEmail, onLogout }) {
     XLSX.writeFile(wb, 'orders.xlsx');
   };
 
-  // ---------- Download Invoice PDF ----------
   const downloadInvoicePDF = (inv) => {
     const doc = new jsPDF();
-    doc.setFontSize(20);
-    doc.setTextColor(102, 126, 234);
-    doc.text('E-App', 20, 20);
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(16);
-    doc.text('INVOICE', 160, 20);
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text('E-App Pvt Ltd', 20, 32);
-    doc.text('Bangalore, India', 20, 38);
-    doc.text('+91 1234567890', 20, 44);
-    doc.setDrawColor(200);
-    doc.line(20, 50, 190, 50);
-    doc.setFontSize(11);
-    doc.setTextColor(0);
-    doc.text(`Invoice ID: ${inv.id}`, 20, 60);
-    doc.text(`Date: ${inv.date}`, 20, 68);
-    doc.text(`Status: ${inv.status}`, 20, 76);
-    doc.setFontSize(12);
+    doc.setFontSize(22); doc.setTextColor(102, 126, 234);
+    doc.text('E-App', 20, 22);
+    doc.setTextColor(0); doc.setFontSize(16);
+    doc.text('INVOICE', 155, 22);
+    doc.setFontSize(10); doc.setTextColor(100);
+    doc.text('E-App Pvt Ltd', 20, 34);
+    doc.text('Bangalore, India', 20, 40);
+    doc.text('+91 1234567890', 20, 46);
+    doc.setDrawColor(200); doc.line(20, 52, 190, 52);
+    doc.setFontSize(11); doc.setTextColor(0);
+    doc.text(`Invoice ID : ${inv.id}`, 20, 62);
+    doc.text(`Order ID   : ${inv.orderId || '-'}`, 20, 70);
+    doc.text(`Date       : ${inv.date}`, 20, 78);
+    doc.text(`Status     : ${inv.status}`, 20, 86);
     doc.setFillColor(240, 240, 255);
-    doc.rect(20, 88, 170, 10, 'F');
-    doc.setTextColor(50);
-    doc.text('Description', 25, 95);
-    doc.text('Amount', 160, 95);
+    doc.rect(20, 96, 170, 10, 'F');
+    doc.setTextColor(60);
+    doc.text('Description', 25, 103); doc.text('Amount', 158, 103);
     doc.setTextColor(0);
-    doc.setFontSize(11);
-    doc.text('Services / Products', 25, 110);
-    doc.text(`Rs. ${inv.amount.toFixed(2)}`, 155, 110);
-    doc.setDrawColor(200);
-    doc.line(20, 118, 190, 118);
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text('Total:', 130, 128);
-    doc.text(`Rs. ${inv.amount.toFixed(2)}`, 155, 128);
-    doc.setFont(undefined, 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(150);
+    doc.text('Services / Products', 25, 116);
+    doc.text(`Rs. ${inv.amount.toFixed(2)}`, 154, 116);
+    doc.setDrawColor(200); doc.line(20, 124, 190, 124);
+    doc.setFontSize(12); doc.setFont(undefined, 'bold');
+    doc.text('Total :', 128, 134);
+    doc.text(`Rs. ${inv.amount.toFixed(2)}`, 154, 134);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9); doc.setTextColor(150);
     doc.text('Thank you for your business!', 20, 270);
     doc.save(`${inv.id}.pdf`);
   };
 
+  // ---------- Render ----------
   return (
     <div className="dashboard-wrapper">
       {/* Sidebar */}
@@ -184,22 +246,17 @@ export default function Dashboard({ userEmail, onLogout }) {
         <nav className="sidebar-nav">
           {TABS.map(tab => (
             <button key={tab} className={`sidebar-item ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
-              <span className="sidebar-tab-icon">{tabIcon(tab)}</span>
-              {tab}
+              <span className="sidebar-tab-icon">{tabIcon(tab)}</span>{tab}
             </button>
           ))}
         </nav>
-        <button className="sidebar-logout" onClick={onLogout}>
-          <span>&#x2192;</span> Logout
-        </button>
+        <button className="sidebar-logout" onClick={onLogout}><span>&#x2192;</span> Logout</button>
       </aside>
 
       {/* Main */}
       <main className="dashboard-main">
         <header className="dash-header">
           <h1 className="dash-title">{activeTab}</h1>
-
-          {/* Cart Icon */}
           <div className="cart-area">
             <button className="cart-btn" onClick={() => setCartOpen(o => !o)}>
               <CartIcon />
@@ -227,8 +284,10 @@ export default function Dashboard({ userEmail, onLogout }) {
                       ))}
                     </ul>
                     <div className="cart-total">
-                      <span>Total</span>
-                      <strong>₹{cartTotal.toFixed(2)}</strong>
+                      <span>Total</span><strong>₹{cartTotal.toFixed(2)}</strong>
+                    </div>
+                    <div className="cart-footer">
+                      <button className="btn-place-order" onClick={placeOrder}>Place Order</button>
                     </div>
                   </>
                 )}
@@ -242,26 +301,21 @@ export default function Dashboard({ userEmail, onLogout }) {
           {activeTab === 'Products' && (
             <ProductsTab
               products={products}
-              visuals={PRODUCT_VISUALS}
-              onAdd={openAdd}
-              onEdit={openEdit}
-              onView={openView}
-              onDelete={(id) => setDeleteConfirm(id)}
-              onAddToCart={addToCart}
-              onBulkUpload={() => fileInputRef.current.click()}
-              bulkError={bulkError}
+              onAdd={openAdd} onEdit={openEdit} onView={openView}
+              onDelete={(id) => setDeleteConfirm(id)} onAddToCart={addToCart}
+              onBulkUpload={() => fileInputRef.current.click()} bulkError={bulkError}
             />
           )}
-          {activeTab === 'Orders' && <OrdersTab orders={SAMPLE_ORDERS} onDownload={downloadOrdersExcel} />}
-          {activeTab === 'Invoices' && <InvoicesTab invoices={SAMPLE_INVOICES} onDownload={downloadInvoicePDF} />}
-          {activeTab === 'Payments' && <PaymentsTab payments={SAMPLE_PAYMENTS} />}
+          {activeTab === 'Orders' && <OrdersTab orders={orders} onDownload={downloadOrdersExcel} onPay={openPayment} />}
+          {activeTab === 'Invoices' && <InvoicesTab invoices={invoices} onDownload={downloadInvoicePDF} />}
+          {activeTab === 'Payments' && <PaymentsTab payments={payments} />}
         </div>
       </main>
 
-      {/* Hidden bulk file input */}
+      {/* Hidden bulk input */}
       <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleBulkUpload} />
 
-      {/* Product Modal */}
+      {/* Product Add/Edit/View Modal */}
       {modalState.open && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -288,6 +342,7 @@ export default function Dashboard({ userEmail, onLogout }) {
                   { label: 'Quantity', name: 'quantity', type: 'number', placeholder: 'e.g. 50' },
                   { label: 'Stock', name: 'stock', type: 'number', placeholder: 'e.g. 35' },
                   { label: 'Price (₹)', name: 'price', type: 'number', placeholder: 'e.g. 79.99' },
+                  { label: 'Image URL (optional)', name: 'image', type: 'text', placeholder: 'https://...' },
                 ].map(field => (
                   <div className="modal-field" key={field.name}>
                     <label>{field.label}</label>
@@ -295,15 +350,14 @@ export default function Dashboard({ userEmail, onLogout }) {
                       onChange={handleFormChange} placeholder={field.placeholder}
                       className={formErrors[field.name] ? 'input-error' : ''}
                       min={field.type === 'number' ? '0' : undefined}
-                      step={field.name === 'price' ? '0.01' : '1'} />
+                      step={field.name === 'price' ? '0.01' : undefined} />
                     {formErrors[field.name] && <span className="error-msg">{formErrors[field.name]}</span>}
                   </div>
                 ))}
                 <div className="modal-field">
                   <label>Description</label>
                   <textarea name="description" value={form.description} onChange={handleFormChange}
-                    placeholder="Product description..." rows={3}
-                    className={formErrors.description ? 'input-error' : ''} />
+                    placeholder="Product description..." rows={3} className={formErrors.description ? 'input-error' : ''} />
                   {formErrors.description && <span className="error-msg">{formErrors.description}</span>}
                 </div>
                 <div className="modal-actions">
@@ -326,11 +380,77 @@ export default function Dashboard({ userEmail, onLogout }) {
               <h2>Delete Product</h2>
               <button className="modal-close" onClick={() => setDeleteConfirm(null)}>&#x2715;</button>
             </div>
-            <p className="delete-msg">Are you sure you want to delete <strong>{products.find(p => p.id === deleteConfirm)?.name}</strong>? This action cannot be undone.</p>
+            <p className="delete-msg">Are you sure you want to delete <strong>{products.find(p => p.id === deleteConfirm)?.name}</strong>? This cannot be undone.</p>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
               <button className="btn-danger" onClick={() => handleDelete(deleteConfirm)}>Delete</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {paymentModal.open && (
+        <div className="modal-overlay" onClick={!paySuccess ? closePaymentModal : undefined}>
+          <div className="modal payment-modal" onClick={e => e.stopPropagation()}>
+            {paySuccess ? (
+              <div className="pay-success">
+                <div className="pay-success-icon">✓</div>
+                <h2>Payment Successful!</h2>
+                <p>Your invoice has been generated automatically.</p>
+                <button className="btn-primary-sm" onClick={closePaymentModal}>View Invoices</button>
+              </div>
+            ) : (
+              <>
+                <div className="modal-header">
+                  <h2>Complete Payment</h2>
+                  <button className="modal-close" onClick={closePaymentModal}>&#x2715;</button>
+                </div>
+                <div className="payment-body">
+                  {/* Order Summary */}
+                  <div className="pay-order-summary">
+                    <p className="pay-order-id">Order: <strong>{paymentModal.order.id}</strong> &nbsp;|&nbsp; {paymentModal.order.date}</p>
+                    {paymentModal.order.cart && paymentModal.order.cart.length > 0 && (
+                      <ul className="pay-items-list">
+                        {paymentModal.order.cart.map(c => (
+                          <li key={c.id}>
+                            <span>{c.name} × {c.qty}</span>
+                            <span>₹{(c.price * c.qty).toFixed(2)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="pay-total-row">
+                      <span>Total Amount</span>
+                      <strong className="pay-amount">₹{paymentModal.order.total.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods */}
+                  <p className="pay-method-label">Select Payment Method</p>
+                  <div className="pay-methods">
+                    {PAYMENT_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        className={`pay-method-btn ${paymentModal.method === opt.id ? 'selected' : ''}`}
+                        onClick={() => setPaymentModal(prev => ({ ...prev, method: opt.id }))}
+                      >
+                        <span className="pay-method-icon">{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    className="btn-pay-now"
+                    disabled={!paymentModal.method}
+                    onClick={handlePayment}
+                  >
+                    Pay ₹{paymentModal.order.total.toFixed(2)}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -361,9 +481,7 @@ function ProfileTab({ email }) {
   );
 }
 
-function ProductsTab({ products, visuals, onAdd, onEdit, onView, onDelete, onAddToCart, onBulkUpload, bulkError }) {
-  const getVisual = (id, index) => visuals[index % visuals.length];
-
+function ProductsTab({ products, onAdd, onEdit, onView, onDelete, onAddToCart, onBulkUpload, bulkError }) {
   return (
     <div>
       <div className="section-toolbar">
@@ -375,47 +493,41 @@ function ProductsTab({ products, visuals, onAdd, onEdit, onView, onDelete, onAdd
       </div>
       {bulkError && <p className="bulk-error">{bulkError}</p>}
       <div className="product-grid">
-        {products.map((p, i) => {
-          const visual = getVisual(p.id, i);
-          return (
-            <div key={p.id} className="product-card">
-              {/* Cart button top-right overlay */}
-              <button className="card-cart-btn" onClick={() => onAddToCart(p)} title="Add to cart">
-                🛒
-              </button>
+        {products.map(p => (
+          <div key={p.id} className="product-card">
+            {/* Cart button — top right */}
+            <button className="card-cart-btn" onClick={() => onAddToCart(p)} title="Add to cart">🛒</button>
 
-              {/* Image area with hover overlay */}
-              <div className="product-img-wrap" style={{ background: visual.bg }}>
-                <span className="product-emoji">{visual.emoji}</span>
-                {/* Hover overlay */}
-                <div className="product-img-overlay">
-                  <p className="overlay-desc">{p.description}</p>
-                  <div className="overlay-meta">
-                    <span>Stock: <strong>{p.stock}</strong></span>
-                    <span>Qty: <strong>{p.quantity}</strong></span>
-                  </div>
-                  <button className="overlay-view-btn" onClick={() => onView(p)}>View Details</button>
-                </div>
-              </div>
-
-              {/* Card body */}
-              <div className="product-card-body">
-                <h3 className="product-card-name">{p.name}</h3>
-                <p className="product-card-price">₹{p.price.toFixed(2)}</p>
-                <div className="product-card-actions">
-                  <button className="btn-edit" onClick={() => onEdit(p)}>Edit</button>
-                  <button className="card-delete-btn" onClick={() => onDelete(p.id)} title="Delete">🗑</button>
+            {/* Full-BG image with hover overlay */}
+            <div
+              className="product-img-bg"
+              style={{ backgroundImage: `url(${p.image})` }}
+            >
+              <div className="product-img-overlay">
+                <p className="overlay-desc">{p.description}</p>
+                <div className="overlay-actions">
+                  <button className="overlay-view-btn" onClick={() => onView(p)}>View</button>
+                  <button className="overlay-edit-btn" onClick={() => onEdit(p)}>Edit</button>
                 </div>
               </div>
             </div>
-          );
-        })}
+
+            {/* Card info */}
+            <div className="product-card-info">
+              <div className="product-card-text">
+                <h3 className="product-card-name">{p.name}</h3>
+                <p className="product-card-price">₹{p.price.toFixed(2)}</p>
+              </div>
+              <button className="card-delete-btn" onClick={() => onDelete(p.id)} title="Delete">🗑</button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function OrdersTab({ orders, onDownload }) {
+function OrdersTab({ orders, onDownload, onPay }) {
   return (
     <div>
       <div className="section-toolbar">
@@ -424,7 +536,9 @@ function OrdersTab({ orders, onDownload }) {
       </div>
       <div className="table-wrapper">
         <table className="data-table">
-          <thead><tr><th>Order ID</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+          <thead>
+            <tr><th>Order ID</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th><th>Action</th></tr>
+          </thead>
           <tbody>
             {orders.map(o => (
               <tr key={o.id}>
@@ -432,7 +546,12 @@ function OrdersTab({ orders, onDownload }) {
                 <td>{o.date}</td>
                 <td>{o.items}</td>
                 <td>₹{o.total.toFixed(2)}</td>
-                <td><span className={`status-badge ${o.status.toLowerCase()}`}>{o.status}</span></td>
+                <td><span className={`status-badge ${o.status.toLowerCase().replace(' ', '-')}`}>{o.status}</span></td>
+                <td>
+                  {o.status === 'Pending Payment' && (
+                    <button className="btn-pay-cta" onClick={() => onPay(o)}>💳 Pay Now</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -450,17 +569,16 @@ function InvoicesTab({ invoices, onDownload }) {
       </div>
       <div className="table-wrapper">
         <table className="data-table">
-          <thead><tr><th>Invoice ID</th><th>Date</th><th>Amount</th><th>Status</th><th>Download</th></tr></thead>
+          <thead><tr><th>Invoice ID</th><th>Order ID</th><th>Date</th><th>Amount</th><th>Status</th><th>Download</th></tr></thead>
           <tbody>
             {invoices.map(inv => (
               <tr key={inv.id}>
                 <td><strong>{inv.id}</strong></td>
+                <td>{inv.orderId || '-'}</td>
                 <td>{inv.date}</td>
                 <td>₹{inv.amount.toFixed(2)}</td>
                 <td><span className={`status-badge ${inv.status.toLowerCase()}`}>{inv.status}</span></td>
-                <td>
-                  <button className="btn-outline btn-sm" onClick={() => onDownload(inv)}>⬇ PDF</button>
-                </td>
+                <td><button className="btn-outline btn-sm" onClick={() => onDownload(inv)}>⬇ PDF</button></td>
               </tr>
             ))}
           </tbody>
