@@ -157,6 +157,20 @@ export default function Dashboard({ userEmail, onLogout }) {
     if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
+  // ---------- Download Bulk Template ----------
+  const downloadBulkTemplate = () => {
+    const sample = [
+      { name: 'Sample Product 1', quantity: 100, stock: 50, price: 299.99, description: 'Short description of product 1' },
+      { name: 'Sample Product 2', quantity: 200, stock: 120, price: 149.49, description: 'Short description of product 2' },
+      { name: 'Sample Product 3', quantity: 50,  stock: 30,  price: 499.00, description: 'Short description of product 3' },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sample);
+    ws['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 40 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Products');
+    XLSX.writeFile(wb, 'bulk_products_template.xlsx');
+  };
+
   // ---------- Bulk Upload ----------
   const handleBulkUpload = (e) => {
     const file = e.target.files[0];
@@ -303,7 +317,9 @@ export default function Dashboard({ userEmail, onLogout }) {
               products={products}
               onAdd={openAdd} onEdit={openEdit} onView={openView}
               onDelete={(id) => setDeleteConfirm(id)} onAddToCart={addToCart}
-              onBulkUpload={() => fileInputRef.current.click()} bulkError={bulkError}
+              onBulkUpload={() => fileInputRef.current.click()}
+              onDownloadTemplate={downloadBulkTemplate}
+              bulkError={bulkError}
             />
           )}
           {activeTab === 'Orders' && <OrdersTab orders={orders} onDownload={downloadOrdersExcel} onPay={openPayment} />}
@@ -481,12 +497,13 @@ function ProfileTab({ email }) {
   );
 }
 
-function ProductsTab({ products, onAdd, onEdit, onView, onDelete, onAddToCart, onBulkUpload, bulkError }) {
+function ProductsTab({ products, onAdd, onEdit, onView, onDelete, onAddToCart, onBulkUpload, onDownloadTemplate, bulkError }) {
   return (
     <div>
       <div className="section-toolbar">
         <span className="section-count">{products.length} Products</span>
         <div className="toolbar-actions">
+          <button className="btn-outline" onClick={onDownloadTemplate}>⬇ Sample Template</button>
           <button className="btn-outline" onClick={onBulkUpload}>⬆ Bulk Upload</button>
           <button className="btn-primary-sm" onClick={onAdd}>+ Add Product</button>
         </div>
