@@ -23,8 +23,8 @@ const LoginPage = () => {
     }
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8 || formData.password.length > 10) {
-      newErrors.password = 'Password must be between 8 and 10 characters';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Password length at least 8 characters';
     }
     return newErrors;
   };
