@@ -4,12 +4,15 @@ import Dashboard from './Dashboard';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
+    email: 'Test@test.com',
+    password: 'test@1234567',
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
+
+  const VALID_EMAIL = 'Test@test.com';
+  const VALID_PASSWORD = 'test@1234567';
 
   const validate = () => {
     const newErrors = {};
@@ -29,8 +32,8 @@ const LoginPage = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }));
+    if (errors[name] || errors.credentials) {
+      setErrors((prev) => ({ ...prev, [name]: '', credentials: '' }));
     }
   };
 
@@ -42,9 +45,14 @@ const LoginPage = () => {
       return;
     }
     setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     setIsLoading(false);
+
+    if (formData.email !== VALID_EMAIL || formData.password !== VALID_PASSWORD) {
+      setErrors({ credentials: 'Invalid user credentials. Please try again.' });
+      return;
+    }
+
     setLoginSuccess(true);
   };
 
@@ -54,7 +62,8 @@ const LoginPage = () => {
         userEmail={formData.email}
         onLogout={() => {
           setLoginSuccess(false);
-          setFormData({ email: '', password: '' });
+          setFormData({ email: 'Test@test.com', password: 'test@1234567' });
+          setErrors({});
         }}
       />
     );
@@ -108,6 +117,10 @@ const LoginPage = () => {
               Forgot password?
             </a>
           </div>
+
+          {errors.credentials && (
+            <div className="credentials-error">{errors.credentials}</div>
+          )}
 
           <button type="submit" className="btn-primary" disabled={isLoading}>
             {isLoading ? <span className="spinner"></span> : 'Sign In'}
